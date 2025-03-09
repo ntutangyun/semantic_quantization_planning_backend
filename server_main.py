@@ -43,6 +43,8 @@ async def handler(websocket):
             )
         )
 
+        asyncio.run(websocket.close())
+
     user_interviewer_crew = init_user_interviewer_crew(
         user_chat_tool, user_interview_callback
     )
