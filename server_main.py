@@ -7,7 +7,7 @@ import websockets
 from crewai.tasks import TaskOutput
 
 from user_chat_tool import UserChatTool
-from user_interviewer_crew import init_user_interviewer_crew, InterviewSummaryDataModel
+from user_interviewer_crew import init_user_interviewer_crew, InterviewSummaryDataModel, ContextQuantizationEvaluationDataModel
 
 
 async def handler(websocket):
@@ -16,19 +16,10 @@ async def handler(websocket):
     def user_interview_callback(task_output: TaskOutput):
         print("User interview completed: " + task_output.raw)
 
-        markdown_pattern = r"```(?:json)?\s*([\s\S]*?)\s*```"
-    
-        # Search for the JSON content inside the Markdown block
-        match = re.search(markdown_pattern, task_output.raw)
-        
-        if match:
-            # Extract the JSON content
-            json_content = match.group(1).strip()
-        else:
-            # If no Markdown block is found, assume the entire text is JSON
-            json_content = task_output.raw.strip()
+        task_output_raw = task_output.raw.strip().replace("```json", "").replace("```", "")
+        print("task_output_raw: " + task_output_raw)
 
-        interview_summary = InterviewSummaryDataModel.parse_raw(json_content)
+        interview_summary = InterviewSummaryDataModel.model_validate_json(task_output_raw)
         print("Interview summary: " + str(interview_summary))
 
         # send the final result and close the websocket
@@ -43,10 +34,33 @@ async def handler(websocket):
             )
         )
 
-        asyncio.run(websocket.close())
+        # asyncio.run(websocket.close())
+    
+    def context_quantization_evaluation_callback(task_output: TaskOutput):
+        print("Context Quantization Evaluation Task completed: " + task_output.raw)
+
+        task_output_raw = task_output.raw.strip().replace("```json", "").replace("```", "")
+        print("task_output_raw: " + task_output_raw)
+
+        evaluation_result = ContextQuantizationEvaluationDataModel.model_validate_json(task_output_raw)
+        print("Evaluation Result: " + str(evaluation_result))
+
+        # send the final result and close the websocket
+        asyncio.run(
+            websocket.send(
+                json.dumps(
+                    {
+                        "type": "context-quantization-evaluation-result",
+                        "data": evaluation_result.model_dump(),
+                    }
+                )
+            )
+        )
+
+        # asyncio.run(websocket.close())
 
     user_interviewer_crew = init_user_interviewer_crew(
-        user_chat_tool, user_interview_callback
+        user_chat_tool, user_interview_callback, context_quantization_evaluation_callback
     )
 
     asyncio.create_task(user_interviewer_crew.kickoff_async())
